@@ -176,20 +176,23 @@ For `.prompt`, write the full text content you want the agent to receive as a sy
 
 ## Adaptive Mail Polling
 
-When you are expecting a reply from an agent (you just sent mail or asked a question):
+**After reading the mailbox for the first time, proactively ask the user:** "Would you like me to watch for new messages from your agents? I can check every few minutes in the background."
 
-```
-/loop 10s check .lingtai/human/mailbox/inbox/ for new messages and report any new ones
-```
-
-For background awareness during normal coding work:
+If the user agrees, set up background polling:
 
 ```
 /loop 5m check .lingtai/human/mailbox/inbox/ for new messages and report any new ones
 ```
 
+When you are expecting a reply from an agent (you just sent mail or asked a question), switch to faster polling:
+
+```
+/loop 10s check .lingtai/human/mailbox/inbox/ for new messages and report any new ones
+```
+
+Once the expected reply arrives, switch back to the 5-minute background loop.
+
 Stop the polling loop when:
-- The expected reply arrives
 - The user says to stop
 - The user ends the conversation
 
