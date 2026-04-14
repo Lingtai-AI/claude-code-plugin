@@ -1,12 +1,14 @@
 ---
 name: lingtai
 description: Interact with LingTai agents through the shared human mailbox. Read and send mail, discover agents, check liveness, manage agent lifecycle (sleep/suspend/cpr/refresh), and set up adaptive mail polling. Use this when the user asks about their agents, wants to check mail, or manage the agent network.
-version: 0.1.0
+version: 0.2.0
 ---
 
 # LingTai — Claude Code Integration
 
 You are connected to a LingTai agent network. You share the human's identity and mailbox. This skill teaches you how to interact with the network using your native file tools.
+
+**This skill is opt-in.** Only activate when the user explicitly asks to interact with the LingTai network (send mail, check inbox, manage agents). Do not proactively read or summarize mail unless asked.
 
 ## Your Identity
 
@@ -32,20 +34,55 @@ Each `message.json` contains:
 | `subject` | string | Subject line |
 | `message` | string | Body text |
 | `received_at` | string | RFC3339 timestamp |
+| `in_reply_to` | string | (optional) UUID of the message being replied to |
 | `identity` | object | Sender's manifest snapshot |
 
 Sort by `received_at` (RFC3339 strings sort lexicographically). Present a summary to the user: sender, subject, time, and first line of the message.
 
 Sent mail is at `.lingtai/human/mailbox/sent/*/message.json`.
 
+### Inbox summary snippet
+
+Use this to quickly list recent messages:
+
+```python
+import json, glob
+msgs = []
+for p in glob.glob('.lingtai/human/mailbox/inbox/*/message.json'):
+    with open(p) as f:
+        msgs.append(json.load(f))
+msgs.sort(key=lambda x: x.get('received_at', ''))
+for m in msgs[-10:]:
+    to = m.get('to', '?')
+    if isinstance(to, list): to = ','.join(to)
+    print(f"{m['received_at'][:19]}  {m['from']:<15s}  {m['subject'][:60]}")
+```
+
+### Read tracking
+
+After presenting messages to the user, record the most recent `received_at` timestamp:
+
+```bash
+echo "<latest-received_at>" > .lingtai/human/.last_read_cc
+```
+
+On subsequent reads, only show messages with `received_at` newer than the stored timestamp. This prevents re-summarizing old messages across context compressions and new sessions.
+
 ## Sending Mail
 
-To send mail, write `message.json` to **both** the recipient's inbox and your sent folder:
+**Always send messages to the orchestrator agent.** The orchestrator manages the network and delegates tasks to worker agents on your behalf. Never send mail directly to non-orchestrator agents unless the user explicitly asks. See "Agent Discovery" below for how to identify the orchestrator.
 
-1. Generate a UUID (use `python3 -c "import uuid; print(uuid.uuid4())"`)
-2. Create the message JSON
+To send mail:
+
+1. Generate UUID and timestamp in one call:
+   ```bash
+   python3 -c "import uuid; from datetime import datetime, timezone; print(uuid.uuid4()); print(datetime.now(timezone.utc).isoformat())"
+   ```
+2. Create the message JSON (see template below)
 3. Write to `.lingtai/<recipient>/mailbox/inbox/<uuid>/message.json`
 4. Write the same file to `.lingtai/human/mailbox/sent/<uuid>/message.json`
+5. Check the recipient's heartbeat. If the agent is dead, inform the user and offer to CPR it before expecting a reply.
+6. Set up reply monitoring (see "Reply Monitoring" below)
 
 Message template:
 
@@ -59,7 +96,8 @@ Message template:
   "subject": "<subject>",
   "message": "<body>",
   "type": "normal",
-  "received_at": "<current RFC3339 timestamp>",
+  "in_reply_to": "<original-message-uuid-if-replying, or omit>",
+  "received_at": "<timestamp>",
   "attachments": [],
   "identity": {
     "agent_name": "human",
@@ -69,7 +107,20 @@ Message template:
 }
 ```
 
-Generate the timestamp with: `python3 -c "from datetime import datetime, timezone; print(datetime.now(timezone.utc).isoformat())"`
+### Reply Monitoring
+
+After sending a message, set up a Monitor to watch for the reply:
+
+```
+Monitor:
+  command: find .lingtai/human/mailbox/inbox -name message.json -newer .lingtai/human/mailbox/sent/<uuid>/message.json 2>/dev/null | head -1
+  interval: 5s
+  persistent: true
+```
+
+When a new message appears, read it and report to the user. Stop the monitor once the reply has been presented.
+
+For background awareness during unrelated work (not waiting for a specific reply), use `/loop 5m` instead.
 
 ## Agent Discovery
 
@@ -82,8 +133,6 @@ Glob: .lingtai/*/.agent.json
 Read each `.agent.json` to see: `agent_name`, `state`, `address`, `admin`, `capabilities`, `nickname`.
 
 The **orchestrator** is the agent whose `admin` field is a JSON object with at least one truthy boolean value (e.g. `{"karma": true}`). This is the primary agent the human interacts with.
-
-**IMPORTANT: Always send mail to the orchestrator, not directly to other agents.** The orchestrator manages the network — it delegates work to other agents internally. Sending mail to non-orchestrator agents bypasses the orchestrator's coordination and can cause confusion. Think of it like emailing a team lead, not individual team members.
 
 `admin: null` = human. `admin: {"karma": false, "nirvana": false}` = regular (non-orchestrator) agent.
 
@@ -174,27 +223,9 @@ For `.inquiry`, source is `"human"` or `"insight"`. Only one inquiry can be pend
 
 For `.prompt`, write the full text content you want the agent to receive as a system message.
 
-## Adaptive Mail Polling
+## Language
 
-**After reading the mailbox for the first time, proactively ask the user:** "Would you like me to watch for new messages from your agents? I can check every few minutes in the background."
-
-If the user agrees, set up background polling:
-
-```
-/loop 5m check .lingtai/human/mailbox/inbox/ for new messages and report any new ones
-```
-
-When you are expecting a reply from an agent (you just sent mail or asked a question), switch to faster polling:
-
-```
-/loop 10s check .lingtai/human/mailbox/inbox/ for new messages and report any new ones
-```
-
-Once the expected reply arrives, switch back to the 5-minute background loop.
-
-Stop the polling loop when:
-- The user says to stop
-- The user ends the conversation
+Agents may respond in different languages depending on their LLM configuration. Present agent replies to the user as-is. If the user asks for a translation or communicates in a different language, translate accordingly. When sending mail, write in the language the user used in their request.
 
 ## Opening the Portal (Viz)
 
@@ -207,7 +238,9 @@ If `.lingtai/.port` doesn't exist, the portal is not running. Inform the user th
 
 ## Reference Skills
 
-The directory `.lingtai/.skills/` contains detailed reference skills. When you need deeper information about LingTai, read these files — they are authoritative and always up to date:
+The directory `.lingtai/.library/intrinsic/` contains detailed reference skills. When you need deeper information about LingTai, read these files — they are authoritative and always up to date.
+
+**Note:** These files are symlinked from the TUI's bundled skills. If the symlinks are broken or the files don't exist, proceed with the information in this skill — it covers the essential protocol.
 
 | Skill | Path | What it covers |
 |-------|------|---------------|
@@ -218,5 +251,6 @@ The directory `.lingtai/.skills/` contains detailed reference skills. When you n
 | **MCP** | `intrinsic/lingtai-mcp/` | MCP server configuration for agents |
 | **Export Network** | `intrinsic/lingtai-export-network/` | Network export format |
 | **Skills Manual** | `intrinsic/skills-manual/` | How the skills system works |
+| **Changelog** | `intrinsic/lingtai-changelog/` | Breaking changes, renames, migrations |
 
-**If the user asks about LingTai or how anything works, always read the relevant skill first before answering.** These skills contain the complete, current documentation. Do not guess — read the source.
+If the user asks about LingTai or how anything works, read the relevant skill first before answering.

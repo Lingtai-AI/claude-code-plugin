@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if [ -d .lingtai/human/mailbox/inbox ]; then count=$(find .lingtai/human/mailbox/inbox -name message.json 2>/dev/null | wc -l | tr -d ' '); echo \"LingTai project detected. You have a mailbox at .lingtai/human/mailbox/inbox/ with $count message(s). Use the lingtai skill to read them — check for recent messages and briefly summarize them to the user.\"; fi",
+            "command": "if [ -d .lingtai/human/mailbox/inbox ]; then count=$(find .lingtai/human/mailbox/inbox -name message.json 2>/dev/null | wc -l | tr -d ' '); echo \"LingTai network detected with $count message(s) in inbox.\"; fi",
             "timeout": 5
           }
         ]
