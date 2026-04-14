@@ -32,7 +32,7 @@ Once installed, Claude Code auto-detects LingTai projects on session start. Ask 
 - *"CPR the orchestrator"*
 - *"What's the network status?"*
 
-The skill activates on demand — it won't interrupt your coding unless you ask.
+The skill activates on demand — it won't interrupt your coding unless you ask. In projects without `.lingtai/`, the plugin does nothing.
 
 ## Requirements
 
