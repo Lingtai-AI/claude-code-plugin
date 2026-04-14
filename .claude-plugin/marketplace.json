@@ -1,0 +1,19 @@
+{
+  "name": "lingtai",
+  "label": "LingTai AI",
+  "description": "Connect Claude Code to the LingTai agent network",
+  "version": "1.0.0",
+  "maintainer": {
+    "name": "Zesen Huang",
+    "url": "https://github.com/lingtai-ai"
+  },
+  "homepage": "https://lingtai.ai",
+  "plugins": [
+    {
+      "name": "lingtai",
+      "description": "Shared mailbox with LingTai agents — read mail, send mail, manage agent lifecycle, discover agents",
+      "version": "0.1.0",
+      "source": "."
+    }
+  ]
+}

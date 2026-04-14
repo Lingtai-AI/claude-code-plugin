@@ -1,0 +1,13 @@
+{
+  "name": "lingtai",
+  "version": "0.1.0",
+  "description": "Connect Claude Code to LingTai agent network via shared mailbox",
+  "author": {
+    "name": "Zesen Huang",
+    "url": "https://github.com/huangzesen"
+  },
+  "homepage": "https://lingtai.ai",
+  "repository": "https://github.com/lingtai-ai/claude-code-plugin",
+  "license": "MIT",
+  "keywords": ["agents", "mailbox", "lingtai", "multi-agent"]
+}
