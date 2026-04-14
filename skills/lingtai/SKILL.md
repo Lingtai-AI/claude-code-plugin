@@ -83,6 +83,8 @@ Read each `.agent.json` to see: `agent_name`, `state`, `address`, `admin`, `capa
 
 The **orchestrator** is the agent whose `admin` field is a JSON object with at least one truthy boolean value (e.g. `{"karma": true}`). This is the primary agent the human interacts with.
 
+**IMPORTANT: Always send mail to the orchestrator, not directly to other agents.** The orchestrator manages the network — it delegates work to other agents internally. Sending mail to non-orchestrator agents bypasses the orchestrator's coordination and can cause confusion. Think of it like emailing a team lead, not individual team members.
+
 `admin: null` = human. `admin: {"karma": false, "nirvana": false}` = regular (non-orchestrator) agent.
 
 ## Checking Agent Liveness
