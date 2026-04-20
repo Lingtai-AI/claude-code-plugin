@@ -1,7 +1,7 @@
 ---
 name: lingtai
-description: Interact with LingTai agents through the shared human mailbox. Read and send mail, discover agents, check liveness, manage agent lifecycle (sleep/suspend/cpr/refresh), and set up adaptive mail polling. Use this when the user asks about their agents, wants to check mail, or manage the agent network.
-version: 0.2.0
+description: Interact with LingTai agents through the shared human mailbox — locally or on remote machines via SSH. Read and send mail, discover agents, check liveness, manage agent lifecycle (sleep/suspend/cpr/refresh), monitor remote networks, and set up adaptive mail polling. Use this when the user asks about their agents, wants to check mail, or manage the agent network.
+version: 0.3.0
 ---
 
 # LingTai — Claude Code Integration
@@ -235,6 +235,124 @@ To show the network visualization:
 2. Open `http://localhost:<port>` in the browser
 
 If `.lingtai/.port` doesn't exist, the portal is not running. Inform the user they can start it with `lingtai-portal` in the project directory.
+
+## Remote Networks (SSH)
+
+LingTai agents can run on remote machines. When the user provides a remote path (`user@host:/path/to/.lingtai`), you can interact with that network over SSH. **Prerequisite:** `ssh user@host` must work without password (i.e., SSH keys are set up via `ssh-copy-id`).
+
+### Adding a Remote
+
+When the user says something like "connect to my remote at zesen@lab:/home/zesen/project/.lingtai", save it:
+
+```bash
+mkdir -p .lingtai/.tui-asset
+python3 -c "
+import json, os
+path = '.lingtai/.tui-asset/remotes.json'
+remotes = json.loads(open(path).read()) if os.path.exists(path) else []
+remotes.append({'ssh': 'zesen@lab', 'path': '/home/zesen/project/.lingtai', 'name': 'lab'})
+open(path, 'w').write(json.dumps(remotes, indent=2))
+print('Remote added.')
+"
+```
+
+### Reading Remote Mail
+
+```bash
+ssh <user@host> "find <path>/human/mailbox/inbox -name message.json 2>/dev/null" | while read f; do ssh <user@host> "cat '$f'"; done
+```
+
+Or more efficiently, fetch all messages in one SSH call:
+
+```bash
+ssh <user@host> "for f in <path>/human/mailbox/inbox/*/message.json; do [ -f \"\$f\" ] && cat \"\$f\" && echo '---MSG_BOUNDARY---'; done"
+```
+
+Parse the output by splitting on `---MSG_BOUNDARY---`, then JSON-parse each block. Present summaries to the user the same way as local mail.
+
+### Sending Mail to Remote Agents
+
+Write a message directly to the remote agent's inbox via SSH:
+
+```bash
+UUID=$(python3 -c "import uuid; print(uuid.uuid4())")
+TIMESTAMP=$(python3 -c "from datetime import datetime, timezone; print(datetime.now(timezone.utc).isoformat())")
+ssh <user@host> "mkdir -p <path>/<recipient>/mailbox/inbox/$UUID && cat > <path>/<recipient>/mailbox/inbox/$UUID/message.json" <<EOF
+{
+  "id": "$UUID",
+  "_mailbox_id": "$UUID",
+  "from": "human",
+  "to": "<recipient>",
+  "cc": [],
+  "subject": "<subject>",
+  "message": "<body>",
+  "type": "normal",
+  "received_at": "$TIMESTAMP",
+  "attachments": [],
+  "identity": {
+    "agent_name": "human",
+    "admin": null,
+    "via": "claude-code-remote"
+  }
+}
+EOF
+```
+
+Also write a copy to local sent folder (`.lingtai/human/mailbox/sent/$UUID/message.json`) if a local `.lingtai/` exists.
+
+### Remote Agent Discovery
+
+```bash
+ssh <user@host> "for f in <path>/*/.agent.json; do [ -f \"\$f\" ] && echo '=== '\$(dirname \"\$f\" | xargs basename)' ===' && cat \"\$f\"; done"
+```
+
+### Remote Liveness Check
+
+```bash
+ssh <user@host> "python3 -c \"import time; t=float(open('<path>/<agent>/.agent.heartbeat').read().strip()); print('ALIVE' if time.time()-t < 3 else 'DEAD', f'({time.time()-t:.1f}s ago)')\""
+```
+
+### Remote Lifecycle (Sleep / Suspend / CPR)
+
+```bash
+# Sleep
+ssh <user@host> "touch <path>/<agent>/.sleep"
+
+# Suspend
+ssh <user@host> "touch <path>/<agent>/.suspend"
+
+# CPR — find the right Python on the remote machine first
+ssh <user@host> "cd $(dirname <path>) && <python> -m lingtai run <path>/<agent>/ >> <path>/<agent>/logs/agent.log 2>&1 &"
+```
+
+### Persistent Remote Monitoring
+
+Once the user has confirmed a remote target, set up polling to watch for new mail:
+
+```
+Monitor:
+  command: ssh <user@host> "find <path>/human/mailbox/inbox -name message.json -newer <path>/human/.last_poll_cc 2>/dev/null | wc -l | tr -d ' '"
+  interval: 30s
+  persistent: true
+```
+
+When the count is > 0, fetch and present the new messages. After presenting, update the remote timestamp:
+
+```bash
+ssh <user@host> "date -u +%Y-%m-%dT%H:%M:%SZ > <path>/human/.last_poll_cc"
+```
+
+Use a 30-second interval for remote polling (vs 5 seconds for local) to avoid SSH overhead.
+
+### Remote Signals
+
+```bash
+# Prompt injection
+ssh <user@host> "echo '<text>' > <path>/<agent>/.prompt"
+
+# Soul inquiry
+ssh <user@host> "printf 'human\n<question>' > <path>/<agent>/.inquiry"
+```
 
 ## Reference Skills
 

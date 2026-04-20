@@ -1,7 +1,7 @@
 {
   "name": "lingtai",
-  "version": "0.2.0",
-  "description": "Connect Claude Code to LingTai agent network via shared mailbox",
+  "version": "0.3.0",
+  "description": "Connect Claude Code to LingTai agent networks — local and remote via SSH",
   "author": {
     "name": "Zesen Huang",
     "url": "https://github.com/huangzesen"
