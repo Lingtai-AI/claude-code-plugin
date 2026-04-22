@@ -1,7 +1,7 @@
 ---
 name: lingtai
 description: Interact with LingTai agents through the shared human mailbox — locally or on remote machines via SSH. Read and send mail, discover agents, check liveness, manage agent lifecycle (sleep/suspend/cpr/refresh), monitor remote networks, and set up adaptive mail polling. Use this when the user asks about their agents, wants to check mail, or manage the agent network.
-version: 0.3.0
+version: 0.4.0
 ---
 
 # LingTai — Claude Code Integration
@@ -13,6 +13,8 @@ You are connected to a LingTai agent network. You share the human's identity and
 ## Your Identity
 
 You are the human. Your directory is `.lingtai/human/`. Your mailbox is `.lingtai/human/mailbox/`. You do not have a separate agent identity — you are another interface the human uses to interact with their agents, like checking email from a different device.
+
+The human is a **pseudo-agent**: `admin: null`, no running process, no heartbeat. Real agents pick up your outgoing mail by polling your outbox (see "Sending Mail" below).
 
 When you send mail, add `"via": "claude-code"` to the identity block so messages can be attributed to you vs the TUI.
 
@@ -72,17 +74,26 @@ On subsequent reads, only show messages with `received_at` newer than the stored
 
 **Always send messages to the orchestrator agent.** The orchestrator manages the network and delegates tasks to worker agents on your behalf. Never send mail directly to non-orchestrator agents unless the user explicitly asks. See "Agent Discovery" below for how to identify the orchestrator.
 
-To send mail:
+### How delivery works
+
+The human is a pseudo-agent, so you do NOT write to the recipient's inbox directly. Instead:
+
+1. You write ONE file to your own outbox: `.lingtai/human/mailbox/outbox/<uuid>/message.json`.
+2. Every real agent polls `.lingtai/human/mailbox/outbox/` (they subscribe to `../human` by default). When the orchestrator sees a message addressed to itself, it claims it by atomically renaming `human/mailbox/outbox/<uuid>/` → `human/mailbox/sent/<uuid>/` and writes a copy into its own inbox.
+3. The appearance of the UUID folder in `human/mailbox/sent/` is the proof-of-delivery signal. Until that rename happens, your message is still "queued".
+
+You never write to the recipient's inbox, and you never populate `human/mailbox/sent/` yourself — the orchestrator does that via the rename.
+
+### Steps
 
 1. Generate UUID and timestamp in one call:
    ```bash
-   python3 -c "import uuid; from datetime import datetime, timezone; print(uuid.uuid4()); print(datetime.now(timezone.utc).isoformat())"
+   python3 -c "import uuid; from datetime import datetime, timezone; print(uuid.uuid4()); print(datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'))"
    ```
-2. Create the message JSON (see template below)
-3. Write to `.lingtai/<recipient>/mailbox/inbox/<uuid>/message.json`
-4. Write the same file to `.lingtai/human/mailbox/sent/<uuid>/message.json`
-5. Check the recipient's heartbeat. If the agent is dead, inform the user and offer to CPR it before expecting a reply.
-6. Set up reply monitoring (see "Reply Monitoring" below)
+2. Create the message JSON (see template below).
+3. Write it to `.lingtai/human/mailbox/outbox/<uuid>/message.json`. Create the UUID directory with `mkdir -p` first.
+4. Check the recipient's heartbeat. If the agent is dead, queueing the message still succeeds but nothing will pick it up — inform the user and offer to CPR the orchestrator.
+5. Set up delivery + reply monitoring (see "Delivery and Reply Monitoring" below).
 
 Message template:
 
@@ -91,7 +102,7 @@ Message template:
   "id": "<uuid>",
   "_mailbox_id": "<uuid>",
   "from": "human",
-  "to": "<recipient-address>",
+  "to": ["<recipient-address>"],
   "cc": [],
   "subject": "<subject>",
   "message": "<body>",
@@ -107,18 +118,28 @@ Message template:
 }
 ```
 
-### Reply Monitoring
+The `to` field is always a list of strings, even for a single recipient. The pickup poller matches its own address against any entry in that list.
 
-After sending a message, set up a Monitor to watch for the reply:
+### Delivery and Reply Monitoring
+
+A sent message goes through two observable states:
+
+- **Queued** — file exists at `human/mailbox/outbox/<uuid>/`.
+- **Delivered** — the UUID folder has moved to `human/mailbox/sent/<uuid>/`. This happens when the recipient's poller claims it.
+- **Replied** — a new message appears in `human/mailbox/inbox/`, typically with `in_reply_to` pointing at your UUID.
+
+To watch for both the delivery and the reply, use a Monitor:
 
 ```
 Monitor:
-  command: find .lingtai/human/mailbox/inbox -name message.json -newer .lingtai/human/mailbox/sent/<uuid>/message.json 2>/dev/null | head -1
+  command: ls .lingtai/human/mailbox/sent/<uuid> 2>/dev/null && find .lingtai/human/mailbox/inbox -name message.json -newer .lingtai/human/mailbox/outbox/<uuid>/message.json 2>/dev/null | head -1
   interval: 5s
   persistent: true
 ```
 
-When a new message appears, read it and report to the user. Stop the monitor once the reply has been presented.
+Once the `sent/<uuid>/` folder appears, the message is delivered; once a newer file appears in `inbox/`, a reply has arrived. Read it and report to the user, then stop the monitor.
+
+If the outbox folder still exists after ~10 seconds with no `sent/<uuid>/` counterpart, the orchestrator hasn't picked it up — it's likely not running. Check its heartbeat and offer CPR.
 
 For background awareness during unrelated work (not waiting for a specific reply), use `/loop 5m` instead.
 
@@ -272,17 +293,17 @@ Parse the output by splitting on `---MSG_BOUNDARY---`, then JSON-parse each bloc
 
 ### Sending Mail to Remote Agents
 
-Write a message directly to the remote agent's inbox via SSH:
+Remote sends bypass the outbox model because no subscribed poller is watching a local outbox on the remote. Write directly to the remote agent's inbox via SSH — this matches what the kernel's own `_deliver_ssh` path does for agent-to-agent SSH mail:
 
 ```bash
 UUID=$(python3 -c "import uuid; print(uuid.uuid4())")
-TIMESTAMP=$(python3 -c "from datetime import datetime, timezone; print(datetime.now(timezone.utc).isoformat())")
+TIMESTAMP=$(python3 -c "from datetime import datetime, timezone; print(datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'))")
 ssh <user@host> "mkdir -p <path>/<recipient>/mailbox/inbox/$UUID && cat > <path>/<recipient>/mailbox/inbox/$UUID/message.json" <<EOF
 {
   "id": "$UUID",
   "_mailbox_id": "$UUID",
   "from": "human",
-  "to": "<recipient>",
+  "to": ["<recipient>"],
   "cc": [],
   "subject": "<subject>",
   "message": "<body>",
@@ -298,7 +319,7 @@ ssh <user@host> "mkdir -p <path>/<recipient>/mailbox/inbox/$UUID && cat > <path>
 EOF
 ```
 
-Also write a copy to local sent folder (`.lingtai/human/mailbox/sent/$UUID/message.json`) if a local `.lingtai/` exists.
+Optionally, also drop a copy in the **local** sent folder (`.lingtai/human/mailbox/sent/$UUID/message.json`) if a local `.lingtai/` exists, so the local TUI's mail view records that you sent this. Skip this if the local project has no human directory.
 
 ### Remote Agent Discovery
 
@@ -365,10 +386,8 @@ The directory `.lingtai/.library/intrinsic/` contains detailed reference skills.
 | **Tutorial Guide** | `intrinsic/lingtai-tutorial-guide/` | How LingTai works — concepts, philosophy, lessons |
 | **Anatomy** | `intrinsic/lingtai-anatomy/` | Full .lingtai/ directory structure, file formats |
 | **Portal Guide** | `intrinsic/lingtai-portal-guide/` | Portal API endpoints, topology recording, replay |
-| **Recipe** | `intrinsic/lingtai-recipe/` | Behavioral recipes and network cloning |
+| **Recipe** | `intrinsic/lingtai-recipe/` | Behavioral recipes, network cloning, export/import |
 | **MCP** | `intrinsic/lingtai-mcp/` | MCP server configuration for agents |
-| **Export Network** | `intrinsic/lingtai-export-network/` | Network export format |
-| **Skills Manual** | `intrinsic/skills-manual/` | How the skills system works |
 | **Changelog** | `intrinsic/lingtai-changelog/` | Breaking changes, renames, migrations |
 
 If the user asks about LingTai or how anything works, read the relevant skill first before answering.

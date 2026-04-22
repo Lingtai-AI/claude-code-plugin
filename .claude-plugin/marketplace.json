@@ -7,7 +7,7 @@
     {
       "name": "lingtai",
       "description": "Shared mailbox with LingTai agents — read mail, send mail, manage agent lifecycle, discover agents",
-      "version": "0.1.0",
+      "version": "0.4.0",
       "source": "./"
     }
   ]

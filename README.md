@@ -12,14 +12,15 @@ claude plugin add Lingtai-AI/claude-code-plugin
 
 ## What you get
 
-- **SessionStart hook** — detects `.lingtai/` projects and reports inbox count
+- **SessionStart hook** — detects `.lingtai/` projects, reports inbox count and any mail awaiting pickup
 - **`lingtai` skill** — full reference for the filesystem mailbox protocol:
-  - Read and send mail (with threading via `in_reply_to`)
+  - Send mail via the human's outbox (pseudo-agent model — agents poll and claim)
+  - Read incoming mail with threading via `in_reply_to`
   - Agent discovery and orchestrator identification
   - Liveness checks (heartbeat)
   - Lifecycle management — sleep, suspend, CPR, refresh, clear
   - Signal files — prompt injection, soul inquiry
-  - Reply monitoring with the Monitor tool
+  - Delivery + reply monitoring with the Monitor tool
   - Read tracking across sessions (`.last_read_cc`)
   - **Remote networks via SSH** — read/send mail, discover agents, check liveness, manage lifecycle, and monitor remote `.lingtai/` directories over SSH
 
