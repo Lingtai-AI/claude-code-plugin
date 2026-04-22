@@ -215,16 +215,6 @@ Launch the agent process in the background:
 
 Only CPR agents that are not alive (heartbeat stale or missing).
 
-### Interrupt
-
-Soft-cancel whatever the agent is currently doing (typically a long LLM call) without killing the process. The agent stays alive and returns to its main loop.
-
-```bash
-touch .lingtai/<agent>/.interrupt
-```
-
-The heartbeat loop picks up the file, deletes it, and fires the cancel event. Use this when an agent is stuck in a long generation but you don't want to lose its state — it's the lighter-weight counterpart to `.suspend`.
-
 ### Refresh (Restart)
 
 A full restart that reloads from init.json:
@@ -247,19 +237,12 @@ You can send signals to agents by writing files:
 |--------|------|---------|--------|
 | Sleep | `.sleep` | empty | Agent enters sleep mode |
 | Suspend | `.suspend` | empty | Agent terminates gracefully |
-| Interrupt | `.interrupt` | empty | Cancels the current LLM call; agent stays alive |
 | Prompt | `.prompt` | text | Injected as `[system]` message |
 | Inquiry | `.inquiry` | `<source>\n<question>` | Triggers soul introspection |
 
 For `.inquiry`, source is `"human"` or `"insight"`. Only one inquiry can be pending at a time — no-op if `.inquiry` or `.inquiry.taken` already exists.
 
 For `.prompt`, write the full text content you want the agent to receive as a system message.
-
-### Signals you should NOT send
-
-`.refresh` is an **agent-internal** handshake for self-restart. It works in tandem with a deferred relaunch watcher that the agent spawns itself. If a human writes `.refresh`, the agent shuts down cleanly (like `.suspend`) but no watcher relaunches it — so the agent is just gone. Use the Refresh procedure above instead.
-
-`.sleep` and `.suspend` are also written by the kernel itself during its own lifecycle flows; externally writing them while the kernel is mid-flow is fine (the semantics compose) but don't remove the `.taken` variants (`.inquiry.taken`, `.refresh.taken`) — those are handshake acks the agent is waiting on.
 
 ## Language
 
@@ -385,17 +368,12 @@ Use a 30-second interval for remote polling (vs 5 seconds for local) to avoid SS
 ### Remote Signals
 
 ```bash
-# Interrupt (cancel current LLM call; agent stays alive)
-ssh <user@host> "touch <path>/<agent>/.interrupt"
-
 # Prompt injection
 ssh <user@host> "echo '<text>' > <path>/<agent>/.prompt"
 
 # Soul inquiry
 ssh <user@host> "printf 'human\n<question>' > <path>/<agent>/.inquiry"
 ```
-
-`.sleep` and `.suspend` for remote agents use `touch` over SSH the same way as the local Lifecycle section above. Do not send `.refresh` remotely either — same reason as the local "Signals you should NOT send" note.
 
 ## Reference Skills
 
