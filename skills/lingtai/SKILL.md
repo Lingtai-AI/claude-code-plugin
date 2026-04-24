@@ -10,6 +10,12 @@ You are connected to a LingTai agent network. You share the human's identity and
 
 **This skill is opt-in.** Only activate when the user explicitly asks to interact with the LingTai network (send mail, check inbox, manage agents). Do not proactively read or summarize mail unless asked.
 
+## Trust but verify
+
+Agents report their own progress, and their reports can drift from reality — avatars may report success without writing files, multi-copy scaffolding can leave a stale tree untouched, orchestrators may forward a plan-of-action as if already executed. When an agent claims "done" on work with real stakes (files created, translations completed, exports validated), spot-check at least one load-bearing claim with `ls`/`grep`/`find` before relaying the status to the user. A 5-second check catches false positives that would otherwise ship.
+
+This is not about distrust — it's about the gap between "task dispatched" and "file on disk." The tighter the loop, the more the network learns. When you catch a false-positive, report it back to the agent with the evidence so it can fix both the artifact and its verification habit.
+
 ## Your Identity
 
 You are the human. Your directory is `.lingtai/human/`. Your mailbox is `.lingtai/human/mailbox/`. You do not have a separate agent identity — you are another interface the human uses to interact with their agents, like checking email from a different device.
@@ -377,17 +383,33 @@ ssh <user@host> "printf 'human\n<question>' > <path>/<agent>/.inquiry"
 
 ## Reference Skills
 
-The directory `.lingtai/.library/intrinsic/` contains detailed reference skills. When you need deeper information about LingTai, read these files — they are authoritative and always up to date.
-
-**Note:** These files are symlinked from the TUI's bundled skills. If the symlinks are broken or the files don't exist, proceed with the information in this skill — it covers the essential protocol.
+When you need deeper information about LingTai than this skill covers, read from the authoritative bundled-skills location. If this plugin is installed, the LingTai TUI (`lingtai-tui`) is installed, which means `~/.lingtai-tui/bundled-skills/` exists and is populated.
 
 | Skill | Path | What it covers |
 |-------|------|---------------|
-| **Tutorial Guide** | `intrinsic/lingtai-tutorial-guide/` | How LingTai works — concepts, philosophy, lessons |
-| **Anatomy** | `intrinsic/lingtai-anatomy/` | Full .lingtai/ directory structure, file formats |
-| **Portal Guide** | `intrinsic/lingtai-portal-guide/` | Portal API endpoints, topology recording, replay |
-| **Recipe** | `intrinsic/lingtai-recipe/` | Behavioral recipes, network cloning, export/import |
-| **MCP** | `intrinsic/lingtai-mcp/` | MCP server configuration for agents |
-| **Changelog** | `intrinsic/lingtai-changelog/` | Breaking changes, renames, migrations |
+| **Anatomy** | `~/.lingtai-tui/bundled-skills/lingtai-anatomy/SKILL.md` | Memory hierarchy, filesystem layout, runtime anatomy (turn loop, state machine, signal lifecycle, molt, mail atomicity). The most load-bearing reference. |
+| **Tutorial Guide** | `~/.lingtai-tui/bundled-skills/lingtai-tutorial-guide/SKILL.md` | How LingTai works — concepts, philosophy, lessons |
+| **Portal Guide** | `~/.lingtai-tui/bundled-skills/lingtai-portal-guide/SKILL.md` | Portal API endpoints, topology recording, replay |
+| **Recipe** | `~/.lingtai-tui/bundled-skills/lingtai-recipe/SKILL.md` | Behavioral recipes, network cloning, export/import |
+| **MCP** | `~/.lingtai-tui/bundled-skills/lingtai-mcp/SKILL.md` | MCP server configuration for agents |
+| **Changelog** | `~/.lingtai-tui/bundled-skills/lingtai-changelog/SKILL.md` | Breaking changes, renames, migrations |
+
+**Secondary fallback**: older projects may also have these symlinked into `.lingtai/.library/intrinsic/` inside the working directory. If the `~/.lingtai-tui/` location is missing (e.g. TUI not installed, user using a different frontend), try that path.
 
 If the user asks about LingTai or how anything works, read the relevant skill first before answering.
+
+## Common pitfalls
+
+### Multiple skill copies can drift
+
+A skill the user cares about may exist in more than one place:
+
+- `.lingtai/<agent>/.library/custom/<skill>/` — the agent's own working copy (typically the edit source)
+- `.lingtai/.library_shared/<skill>/` — shared with the whole network
+- `<project>/recipes/<id>/<skill>/` — packaged for external distribution
+
+When an agent edits only one copy, the others silently go stale. When auditing a skill's state, run `diff -rq` across all present copies before trusting any single one. Establish a single source of truth with the user and delete the drift copies — don't maintain parallel edits by hand.
+
+### Context-cap failure looks like a healthy agent
+
+An agent can heartbeat freshly and report state `active` while its LLM calls are silently failing (context overflow, rate limit, provider 5xx). Heartbeat ≠ progress. If an agent goes quiet after a large coordination session, read `logs/agent.log` for recent errors before concluding "it's thinking" — `Prompt exceeds max length`, 429 rate limits, and 5xx cascades are invisible from the outside. The fix is usually provider-swap, model-swap with bigger context, or history trim (clear/molt), not more messages.
