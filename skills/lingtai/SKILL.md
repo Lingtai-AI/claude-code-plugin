@@ -4,7 +4,7 @@ description: Interact with LingTai agents through the shared human mailbox — l
 version: 0.4.0
 ---
 
-# LingTai — Claude Code Integration
+# LingTai — Agent Network Integration
 
 You are connected to a LingTai agent network. You share the human's identity and mailbox. This skill teaches you how to interact with the network using your native file tools.
 
@@ -22,17 +22,17 @@ You are the human. Your directory is `.lingtai/human/`. Your mailbox is `.lingta
 
 The human is a **pseudo-agent**: `admin: null`, no running process, no heartbeat. Real agents pick up your outgoing mail by polling your outbox (see "Sending Mail" below).
 
-When you send mail, add `"via": "claude-code"` to the identity block so messages can be attributed to you vs the TUI.
+When you send mail, add a `"via": "<your-host>"` field to the identity block so messages can be attributed to which interface sent them (e.g. `"via": "claude-code"`, `"via": "codex"`, etc.). Use a short stable identifier for the tool you are running inside.
 
 ## Reading Mail
 
-Scan for messages:
+Scan for messages at this path:
 
 ```
-Glob: .lingtai/human/mailbox/inbox/*/message.json
+.lingtai/human/mailbox/inbox/*/message.json
 ```
 
-Each `message.json` contains:
+Use whatever file-search tool you have (glob, find, ls). Each `message.json` contains:
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -68,13 +68,13 @@ for m in msgs[-10:]:
 
 ### Read tracking
 
-After presenting messages to the user, record the most recent `received_at` timestamp:
+After presenting messages to the user, record the most recent `received_at` timestamp to a host-suffixed state file so different interfaces don't share read pointers:
 
 ```bash
-echo "<latest-received_at>" > .lingtai/human/.last_read_cc
+echo "<latest-received_at>" > .lingtai/human/.last_read_<host>
 ```
 
-On subsequent reads, only show messages with `received_at` newer than the stored timestamp. This prevents re-summarizing old messages across context compressions and new sessions.
+Pick a short stable suffix for `<host>` matching the `via:` tag you use when sending mail (e.g. `.last_read_cc` for Claude Code, `.last_read_codex` for Codex CLI). On subsequent reads, only show messages with `received_at` newer than the stored timestamp. This prevents re-summarizing old messages across context compressions and new sessions.
 
 ## Sending Mail
 
@@ -119,7 +119,7 @@ Message template:
   "identity": {
     "agent_name": "human",
     "admin": null,
-    "via": "claude-code"
+    "via": "<your-host>"
   }
 }
 ```
@@ -134,27 +134,26 @@ A sent message goes through two observable states:
 - **Delivered** — the UUID folder has moved to `human/mailbox/sent/<uuid>/`. This happens when the recipient's poller claims it.
 - **Replied** — a new message appears in `human/mailbox/inbox/`, typically with `in_reply_to` pointing at your UUID.
 
-To watch for both the delivery and the reply, use a Monitor:
+To watch for both, poll every ~5 seconds with whatever monitoring or loop facility your host provides. The check is:
 
-```
-Monitor:
-  command: ls .lingtai/human/mailbox/sent/<uuid> 2>/dev/null && find .lingtai/human/mailbox/inbox -name message.json -newer .lingtai/human/mailbox/outbox/<uuid>/message.json 2>/dev/null | head -1
-  interval: 5s
-  persistent: true
+```bash
+ls .lingtai/human/mailbox/sent/<uuid> 2>/dev/null && \
+  find .lingtai/human/mailbox/inbox -name message.json \
+       -newer .lingtai/human/mailbox/outbox/<uuid>/message.json 2>/dev/null | head -1
 ```
 
-Once the `sent/<uuid>/` folder appears, the message is delivered; once a newer file appears in `inbox/`, a reply has arrived. Read it and report to the user, then stop the monitor.
+Once the `sent/<uuid>/` folder appears, the message is delivered; once a newer file appears in `inbox/`, a reply has arrived. Read it and report to the user, then stop polling.
 
 If the outbox folder still exists after ~10 seconds with no `sent/<uuid>/` counterpart, the orchestrator hasn't picked it up — it's likely not running. Check its heartbeat and offer CPR.
 
-For background awareness during unrelated work (not waiting for a specific reply), use `/loop 5m` instead.
+For background awareness during unrelated work (not waiting for a specific reply), use a longer-interval check (e.g. every few minutes) instead.
 
 ## Agent Discovery
 
-Find all agents:
+Find all agents at this path:
 
 ```
-Glob: .lingtai/*/.agent.json
+.lingtai/*/.agent.json
 ```
 
 Read each `.agent.json` to see: `agent_name`, `state`, `address`, `admin`, `capabilities`, `nickname`.
@@ -267,6 +266,8 @@ If `.lingtai/.port` doesn't exist, the portal is not running. Inform the user th
 
 LingTai agents can run on remote machines. When the user provides a remote path (`user@host:/path/to/.lingtai`), you can interact with that network over SSH. **Prerequisite:** `ssh user@host` must work without password (i.e., SSH keys are set up via `ssh-copy-id`).
 
+When sending mail to remote agents, use a `via:` tag with a `-remote` suffix (e.g. `"via": "claude-code-remote"`, `"via": "codex-remote"`) so the recipient can tell local from remote interactions.
+
 ### Adding a Remote
 
 When the user says something like "connect to my remote at zesen@lab:/home/zesen/project/.lingtai", save it:
@@ -319,7 +320,7 @@ ssh <user@host> "mkdir -p <path>/<recipient>/mailbox/inbox/$UUID && cat > <path>
   "identity": {
     "agent_name": "human",
     "admin": null,
-    "via": "claude-code-remote"
+    "via": "<your-host>-remote"
   }
 }
 EOF
@@ -354,22 +355,17 @@ ssh <user@host> "cd $(dirname <path>) && <python> -m lingtai run <path>/<agent>/
 
 ### Persistent Remote Monitoring
 
-Once the user has confirmed a remote target, set up polling to watch for new mail:
-
-```
-Monitor:
-  command: ssh <user@host> "find <path>/human/mailbox/inbox -name message.json -newer <path>/human/.last_poll_cc 2>/dev/null | wc -l | tr -d ' '"
-  interval: 30s
-  persistent: true
-```
-
-When the count is > 0, fetch and present the new messages. After presenting, update the remote timestamp:
+Once the user has confirmed a remote target, set up polling to watch for new mail. Use a 30-second interval (vs ~5 seconds for local) to avoid SSH overhead. The poll command is:
 
 ```bash
-ssh <user@host> "date -u +%Y-%m-%dT%H:%M:%SZ > <path>/human/.last_poll_cc"
+ssh <user@host> "find <path>/human/mailbox/inbox -name message.json -newer <path>/human/.last_poll_<host> 2>/dev/null | wc -l | tr -d ' '"
 ```
 
-Use a 30-second interval for remote polling (vs 5 seconds for local) to avoid SSH overhead.
+Use the same `<host>` suffix you picked for the local read-tracking file. When the count is > 0, fetch and present the new messages. After presenting, update the remote timestamp:
+
+```bash
+ssh <user@host> "date -u +%Y-%m-%dT%H:%M:%SZ > <path>/human/.last_poll_<host>"
+```
 
 ### Remote Signals
 
@@ -383,7 +379,7 @@ ssh <user@host> "printf 'human\n<question>' > <path>/<agent>/.inquiry"
 
 ## Reference Skills
 
-When you need deeper information about LingTai than this skill covers, read from the authoritative bundled-skills location. If this plugin is installed, the LingTai TUI (`lingtai-tui`) is installed, which means `~/.lingtai-tui/bundled-skills/` exists and is populated.
+When you need deeper information about LingTai than this skill covers, read from the authoritative bundled-skills location. If you have access to a LingTai project, the LingTai TUI (`lingtai-tui`) is typically installed, which means `~/.lingtai-tui/bundled-skills/` exists and is populated.
 
 | Skill | Path | What it covers |
 |-------|------|---------------|

@@ -2,7 +2,7 @@
 
 Connect Claude Code to a [LingTai](https://lingtai.ai) agent network. Read mail from your agents, send instructions, check liveness, and manage the network — all through the shared human mailbox.
 
-> **Not using Claude Code?** See [lingtai-mailbox-skill](https://github.com/Lingtai-AI/lingtai-mailbox-skill) for OpenCode, Codex CLI, Hermes, and other coding agents.
+> **Other coding agents:** Codex CLI users → [`Lingtai-AI/codex-plugin`](https://github.com/Lingtai-AI/codex-plugin). Anything else → [`Lingtai-AI/lingtai-skill`](https://github.com/Lingtai-AI/lingtai-skill) (the canonical protocol skill — copy into your tool's skill dir).
 
 ## Install
 
@@ -21,7 +21,8 @@ claude plugin add Lingtai-AI/claude-code-plugin
   - Lifecycle management — sleep, suspend, CPR, refresh, clear
   - Signal files — prompt injection, soul inquiry
   - Delivery + reply monitoring with the Monitor tool
-  - Read tracking across sessions (`.last_read_cc`)
+  - Read tracking across sessions
+  - Per-host `via:` tag for message attribution
   - **Remote networks via SSH** — read/send mail, discover agents, check liveness, manage lifecycle, and monitor remote `.lingtai/` directories over SSH
 
 ## Usage
@@ -54,7 +55,7 @@ The `lingtai` skill in this plugin is the **integration protocol** — how Claud
 
 The plugin doesn't bundle these skills — they're maintained in the [main LingTai repo](https://github.com/Lingtai-AI/lingtai) under `tui/internal/preset/skills/` and populated to `~/.lingtai-tui/bundled-skills/` on TUI install. If you use this plugin, the TUI is installed, so this path exists. When deeper information about LingTai internals is needed, Claude should `Read` the relevant file from that location — the plugin's own `lingtai` skill references this path as its authoritative fallback.
 
-**For plugin developers**: the source of the integration skill is `skills/lingtai/SKILL.md` in this repo. The anatomy and other reference skills live upstream — edit them in the main lingtai repo, not here.
+**For plugin developers**: the integration skill at `skills/lingtai/SKILL.md` is **vendored from the canonical [`Lingtai-AI/lingtai-skill`](https://github.com/Lingtai-AI/lingtai-skill) repo**. Do not edit it here — edit it upstream and run `scripts/sync-from-canonical.sh` to pull the latest. The anatomy and other reference skills live in the main `lingtai` repo.
 
 ## Requirements
 
