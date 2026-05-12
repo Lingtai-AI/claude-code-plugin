@@ -23,7 +23,6 @@ claude plugin add Lingtai-AI/claude-code-plugin
   - Delivery + reply monitoring with the Monitor tool
   - Read tracking across sessions
   - Per-host `via:` tag for message attribution
-  - **Remote networks via SSH** — read/send mail, discover agents, check liveness, manage lifecycle, and monitor remote `.lingtai/` directories over SSH
 
 ## Usage
 
@@ -34,9 +33,6 @@ Once installed, Claude Code auto-detects LingTai projects on session start. Ask 
 - *"Are any agents alive?"*
 - *"CPR the orchestrator"*
 - *"What's the network status?"*
-- *"Connect to my remote at zesen@lab:/home/zesen/project/.lingtai"*
-- *"Check inbox on the lab server"*
-- *"Send 'hello' to the orchestrator on my remote"*
 
 The skill activates on demand — it won't interrupt your coding unless you ask. In projects without `.lingtai/`, the plugin does nothing.
 
@@ -61,7 +57,6 @@ The plugin doesn't bundle these skills — they're maintained in the [main LingT
 
 - A running LingTai project (`.lingtai/` directory with agents)
 - Python 3 (for UUID generation and liveness checks)
-- SSH keys configured for remote networks (`ssh-copy-id user@host`)
 - `lingtai-tui` installed (populates `~/.lingtai-tui/bundled-skills/` with the reference skills above)
 
 ## License
