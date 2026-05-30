@@ -61,4 +61,4 @@ The plugin doesn't bundle these skills — they're maintained in the [main LingT
 
 ## License
 
-MIT
+Apache-2.0
