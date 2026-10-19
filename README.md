@@ -2,27 +2,27 @@
 
 Connect Claude Code to a [LingTai](https://lingtai.ai) agent network. Read mail from your agents, send instructions, check liveness, and manage the network — all through the shared human mailbox.
 
-> **Other coding agents:** Codex CLI users → [`Lingtai-AI/codex-plugin`](https://github.com/Lingtai-AI/codex-plugin). Anything else → [`Lingtai-AI/lingtai-skill`](https://github.com/Lingtai-AI/lingtai-skill) (the canonical protocol skill — copy into your tool's skill dir).
+> **Other coding agents:** Codex CLI users → [`Lingtai-AI/codex-plugin`](https://github.com/Lingtai-AI/codex-plugin). Anything else → [`Lingtai-AI/lingtai-skill`](https://github.com/Lingtai-AI/lingtai-skill) (the canonical skill — copy into your tool's skill dir).
 
 ## Install
 
 ```bash
-claude plugin add Lingtai-AI/claude-code-plugin
+claude plugin marketplace add Lingtai-AI/claude-code-plugin
+claude plugin install lingtai@lingtai
 ```
+
+To upgrade an existing install: `claude plugin marketplace update lingtai && claude plugin update lingtai@lingtai`.
 
 ## What you get
 
 - **SessionStart hook** — detects `.lingtai/` projects, reports inbox count and any mail awaiting pickup
-- **`lingtai` skill** — full reference for the filesystem mailbox protocol:
-  - Send mail via the human's outbox (pseudo-agent model — agents poll and claim)
-  - Read incoming mail with threading via `in_reply_to`
-  - Agent discovery and orchestrator identification
-  - Liveness checks (heartbeat)
-  - Lifecycle management — sleep, suspend, CPR, refresh, clear
-  - Signal files — prompt injection, soul inquiry
-  - Delivery + reply monitoring with the Monitor tool
-  - Read tracking across sessions
-  - Per-host `via:` tag for message attribution
+- **`lingtai` skill** — tells Claude how to find and follow the network's own entrance:
+  - `.lingtai/human/README.md` — the protocol, written by the LingTai kernel (mail, liveness, signals, restarts)
+  - `.lingtai/<agent>/SKILL.md` — each agent's description of itself, written by the agent
+  - host rules: `via: claude-code` attribution, per-host read tracking, reply monitoring, verifying "done" claims
+  - a minimal, tested fallback recipe for projects whose kernel does not write the entrance yet
+
+Because the protocol is read from the project rather than copied into the plugin, the plugin does not go stale when the kernel changes.
 
 ## Usage
 
@@ -36,28 +36,16 @@ Once installed, Claude Code auto-detects LingTai projects on session start. Ask 
 
 The skill activates on demand — it won't interrupt your coding unless you ask. In projects without `.lingtai/`, the plugin does nothing.
 
-## Related skills
+## Deeper reference
 
-The `lingtai` skill in this plugin is the **integration protocol** — how Claude talks to the mailbox. For deeper reference about the agent runtime itself, Claude should load the skills that ship with the LingTai TUI. When the TUI (`lingtai-tui`) is installed, these live at `~/.lingtai-tui/bundled-skills/`:
+Each agent carries the kernel's manuals at `.lingtai/<agent>/.library/intrinsic/capabilities/<skill>/SKILL.md` (for example `lingtai-kernel-anatomy`, `email`, `system-manual`), and the LingTai TUI installs guides at `~/.lingtai-tui/utilities/` (for example `lingtai-tutorial-guide`, `lingtai-portal-guide`, `lingtai-tui-anatomy`). The skill points Claude at these when you ask how LingTai works.
 
-| Skill | Location | What it covers |
-|-------|----------|---------------|
-| **lingtai-anatomy** | `~/.lingtai-tui/bundled-skills/lingtai-anatomy/SKILL.md` | Memory system, filesystem layout, runtime anatomy (turn loop, state machine, signals, molt, mail atomicity) |
-| **lingtai-tutorial-guide** | `~/.lingtai-tui/bundled-skills/lingtai-tutorial-guide/SKILL.md` | How LingTai works — concepts, philosophy, lessons |
-| **lingtai-portal-guide** | `~/.lingtai-tui/bundled-skills/lingtai-portal-guide/SKILL.md` | Portal API endpoints, topology recording, replay |
-| **lingtai-recipe** | `~/.lingtai-tui/bundled-skills/lingtai-recipe/SKILL.md` | Behavioral recipes, network cloning, export/import |
-| **lingtai-mcp** | `~/.lingtai-tui/bundled-skills/lingtai-mcp/SKILL.md` | MCP server configuration for agents |
-| **lingtai-changelog** | `~/.lingtai-tui/bundled-skills/lingtai-changelog/SKILL.md` | Breaking changes, renames, migrations |
-
-The plugin doesn't bundle these skills — they're maintained in the [main LingTai repo](https://github.com/Lingtai-AI/lingtai) under `tui/internal/preset/skills/` and populated to `~/.lingtai-tui/bundled-skills/` on TUI install. If you use this plugin, the TUI is installed, so this path exists. When deeper information about LingTai internals is needed, Claude should `Read` the relevant file from that location — the plugin's own `lingtai` skill references this path as its authoritative fallback.
-
-**For plugin developers**: the integration skill at `skills/lingtai/SKILL.md` is **vendored from the canonical [`Lingtai-AI/lingtai-skill`](https://github.com/Lingtai-AI/lingtai-skill) repo**. Do not edit it here — edit it upstream and run `scripts/sync-from-canonical.sh` to pull the latest. The anatomy and other reference skills live in the main `lingtai` repo.
+**For plugin developers**: `skills/lingtai/SKILL.md` is **vendored from the canonical [`Lingtai-AI/lingtai-skill`](https://github.com/Lingtai-AI/lingtai-skill) repo**. Do not edit it here — edit it upstream and run `scripts/sync-from-canonical.sh` to pull the latest.
 
 ## Requirements
 
-- A running LingTai project (`.lingtai/` directory with agents)
-- Python 3 (for UUID generation and liveness checks)
-- `lingtai-tui` installed (populates `~/.lingtai-tui/bundled-skills/` with the reference skills above)
+- A LingTai project (`.lingtai/` directory with agents)
+- Python 3 (for message ids and timestamps in the fallback recipe)
 
 ## License
 

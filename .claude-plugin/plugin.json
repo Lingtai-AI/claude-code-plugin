@@ -1,6 +1,6 @@
 {
   "name": "lingtai",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "description": "Connect Claude Code to LingTai agent networks",
   "author": {
     "name": "Zesen Huang",
@@ -8,6 +8,11 @@
   },
   "homepage": "https://lingtai.ai",
   "repository": "https://github.com/Lingtai-AI/claude-code-plugin",
-  "license": "MIT",
-  "keywords": ["agents", "mailbox", "lingtai", "multi-agent"]
+  "license": "Apache-2.0",
+  "keywords": [
+    "agents",
+    "mailbox",
+    "lingtai",
+    "multi-agent"
+  ]
 }
